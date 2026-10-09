@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roleta Royale - Versão Gratuita</title>
+    <style>
+        body {
+            background-color: #0e3d26;
+            color: white;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 10px;
+            user-select: none;
+        }
+        h1 { margin: 5px 0; color: #ffd700; font-size: 24px; }
+        
+        .painel {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            background: rgba(0,0,0,0.4);
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        .saldo-box { font-size: 18px; font-weight: bold; color: #ffd700; }
+        
+        /* Botão de Bônus Diário */
+        .btn-bonus {
+            background: #e67e22;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 12px;
+            display: none; /* Só aparece quando o jogador falir */
+            animation: piscar 1s infinite alternate;
+        }
+        @keyframes piscar {
+            from { transform: scale(1); }
+            to { transform: scale(1.05); box-shadow: 0 0 10px #e67e22; }
+        }
+        
+        #canvas-container {
+            position: relative;
+            width: 240px;
+            height: 240px;
+            margin: 5px auto;
+        }
+        canvas {
+            border-radius: 50%;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.6);
+            cursor: grab;
+        }
+        #seta {
+            position: absolute;
+            top: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 12px solid transparent;
+            border-right: 12px solid transparent;
+            border-top: 24px solid #ffd700;
+            z-index: 10;
+        }
+        
+        #resultado {
+            font-size: 18px;
+            font-weight: bold;
+            margin: 10px 0;
+            min-height: 25px;
+        }
+
+        /* Seleção de Valor de Aposta */
+        .controle-aposta {
+            background: rgba(0,0,0,0.3);
+            max-width: 340px;
+            margin: 5px auto 10px auto;
+            padding: 8px;
+            border-radius: 6px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+        }
+        .btn-valor {
+            background: #ffd700;
+            color: #000;
+            border: none;
+            padding: 5px 12px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .btn-valor:active { background: #b39700; }
+        .txt-valor-atual { font-size: 16px; font-weight: bold; color: #fff; }
+
+        .status-aposta { font-size: 14px; color: #a9dfbf; margin-bottom: 5px; }
+        
+        /* Tapete de Apostas */
+        .tapete {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 4px;
+            max-width: 340px;
+            margin: 0 auto;
+            background: #0b2e1d;
+            padding: 8px;
+            border-radius: 6px;
+            border: 2px solid #ffd700;
+        }
+        .botao-aposta {
+            padding: 8px 0;
+            font-size: 12px;
+            font-weight: bold;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+        }
+        .zero { grid-column: span 6; background-color: #008000 !important; }
+        .vermelho { background-color: #e74c3c; }
+        .preto { background-color: #2c3e50; }
+        
+        .selecionado {
+            outline: 3px solid #ffd700;
+            box-shadow: 0 0 10px #ffd700;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Roleta Royale</h1>
+
+    <div class="painel">
+        <div class="saldo-box">Fichas: <span id="txt-saldo">1000</span> 🪙</div>
+        <button id="btn-recompensa" class="btn-bonus" onclick="coletarBonusDiario()">🎁 Check-in Diário</button>
+    </div>
+
+    <div id="canvas-container">
+        <div id="seta"></div>
+        <canvas id="roleta" width="240" height="240"></canvas>
+    </div>
+
+    <div id="resultado">Escolha um número abaixo e configure sua aposta!</div>
+
+    <!-- Controles de Ajuste do Valor da Aposta -->
+    <div class="controle-aposta">
+        <button class="btn-valor" onclick="alterarValorAposta(-5)">-</button>
+        <div class="txt-valor-atual">Aposta: <span id="txt-valor-aposta">10</span> 🪙</div>
+        <button class="btn-valor" onclick="alterarValorAposta(5)">+</button>
+    </div>
+    
+    <div class="status-aposta" id="txt-aposta">Nenhuma aposta feita</div>
+
+    <!-- Tapete de Apostas Interativo -->
+    <div class="tapete">
+        <button class="botao-aposta zero" onclick="selecionarNumero(0, this)">0</button>
+        <script>
+            const coresOficiais =; 
+            for(let i=1; i<=36; i++) {
+                let corClasse = (coresOficiais[i] === 1) ? 'vermelho' : 'preto';
+                document.write(`<button class="botao-aposta ${corClasse}" onclick="selecionarNumero(${i}, this)">${i}</button>`);
+            }
+        </script>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('roleta');
+        const ctx = canvas.getContext('2d');
+        const resultadoDiv = document.getElementById('resultado');
+        const txtSaldo = document.getElementById('txt-saldo');
+        const txtAposta = document.getElementById('txt-aposta');
+        const txtValorAposta = document.getElementById('txt-valor-aposta');
+        const btnRecompensa = document.getElementById('btn-recompensa');
+
+        const numeros =;
+        const totalFatias = numeros.length;
+        const anguloFatria = (2 * Math.PI) / totalFatias;
+
+        let anguloAtual = 0;
+        let velocidade = 0;
+        let estaGirando = false;
+        let comecoX = 0;
+        let estaArrastando = false;
+
+        // Configuração de Economia 100% Virtual
+        let saldo = 1000;
+        let valorAposta = 10; 
+        let numeroApostado = null;
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let ultimoSomAngulo = 0;
+
+        // Tentar carregar dados salvos anteriormente no celular
+        if(localStorage.getItem('roleta_saldo') !== null) {
+            saldo = parseInt(localStorage.getItem('roleta_saldo'));
+        }
+
+        function salvarDados() {
+            localStorage.setItem('roleta_saldo', saldo);
+        }
+
+        function verificarFalencia() {
+            // Se o saldo for menor que a aposta mínima (0.50), mostra o botão de check-in diário
+            if (saldo < 1) {
+                btnRecompensa.style.display = "block";
+                resultadoDiv.innerHTML = "<span style='color:#e74c3c'>Você faliu! Use o Check-in Diário para resgatar mais fichas.</span>";
+            } else {
+                btnRecompensa.style.display = "none";
+            }
+            txtSaldo.innerText = saldo;
+        }
+
+        function coletarBonusDiario() {
+            const hoje = new Date().toDateString();
+            const ultimoCheckin = localStorage.getItem('roleta_ultimo_checkin');
+
+            if (ultimoCheckin === hoje) {
+                alert("Você já coletou seu bônus hoje! Volte amanhã para mais fichas.");
+                return;
+            }
+
+            // Concede um pequeno número de fichas bônus
+            let fichasBonus = 100;
+            saldo += fichasBonus;
+            localStorage.setItem('roleta_ultimo_checkin', hoje);
+            salvarDados();
+            verificarFalencia();
+            
+            alert(`Sucesso! Você recebeu ${fichasBonus} fichas de check-in diário.`);
+            resultadoDiv.innerText = "Escolha um número abaixo e configure sua aposta!";
+        }
+
+        function tocarSomClique() {
+            try {
+                let osc = audioCtx.createOscillator();
+                let gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(120, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.05);
+            } catch(e) {}
+        }
+
+        function alterarValorAposta(quantidade) {
+            if (estaGirando) return;
+            let novoValor = valorAposta + quantidade;
+            
+            // Limites estabelecidos: mínimo 1 ficha e máximo 100 fichas
+            if (novoValor < 1) novoValor = 1;
+            if (novoValor > 100) novoValor = 100;
+            
+            valorAposta = novoValor;
+            txtValorAposta.innerText = valorAposta;
+            
+            if (numeroApostado !== null) {
+                txtAposta.innerText = `Apostado no número: ${numeroApostado} (Valor: ${valorAposta} fichas)`;
+            }
+        }
+
+        function selecionarNumero(num, elemento) {
+            if (estaGirando) return;
+            numeroApostado = num;
+            
+            document.querySelectorAll('.botao-aposta').forEach(btn => btn.classList.remove('selecionado'));
+            elemento.classList.add('selecionado');
+            txtAposta.innerText = `Apostado no número: ${num} (Valor: ${valorAposta} fichas)`;
+        }
+
+        function desenharRoleta() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.rotate(anguloAtual);
+
+            for (let i = 0; i < totalFatias; i++) {
+
